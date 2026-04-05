@@ -1,0 +1,141 @@
+ <AccelStepper.h>
+
+const int STEP_PIN = 12;
+const int DIR_PIN  = 13;
+const int EN_PIN   = 11;
+
+AccelStepper stepper(AccelStepper::DRIVER, STEP_PIN, DIR_PIN);
+
+float baseSpeed = 1000;
+float baseAccel = 1000;
+
+float impulseSpeed = 4000;
+float impulseAccel = 8000;
+
+long targetPos = 1000000000L;
+
+bool running = true;
+bool enabled = true;
+int direction = 1;
+
+bool impulseActive = false;
+unsigned long impulseStart = 0;
+unsigned long impulseDuration = 200;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(EN_PIN, OUTPUT);
+  digitalWrite(EN_PIN, LOW);
+  stepper.setMaxSpeed(baseSpeed);
+  stepper.setAcceleration(baseAccel);
+  stepper.moveTo(targetPos);
+}
+
+void loop() {
+
+  if (running && enabled) {
+    stepper.run();
+  }
+
+  if (Serial.available()) {
+    char c = Serial.read();
+    if (c == '\n' || c == '\r') return;
+
+    if (c == 't') {
+      running = !running;
+      if (running) {
+        digitalWrite(EN_PIN, LOW);
+        stepper.moveTo(direction * targetPos);
+        Serial.println("RUN");
+      } else {
+        stepper.stop();
+        Serial.println("STOP");
+      }
+    }
+
+    if (c == 'h') {
+      enabled = !enabled;
+      if (enabled) {
+        digitalWrite(EN_PIN, LOW);
+        Serial.println("ON");
+      } else {
+        digitalWrite(EN_PIN, HIGH);
+        Serial.println("OFF");
+      }
+    }
+
+    if (c == 'd') {
+      direction *= -1;
+      stepper.moveTo(direction * targetPos);
+      Serial.println("DIR");
+    }
+
+    if (c == '+') {
+      baseSpeed += 200;
+      stepper.setMaxSpeed(baseSpeed);
+      Serial.println(baseSpeed);
+    }
+
+    if (c == '-') {
+      baseSpeed -= 200;
+      if (baseSpeed < 100) baseSpeed = 100;
+      stepper.setMaxSpeed(baseSpeed);
+      Serial.println(baseSpeed);
+    }
+if (c == '?') {
+  Serial.println("t: run/stop");
+  Serial.println("h: enable toggle");
+  Serial.println("k: kill");
+  Serial.println("d: direction");
+  Serial.println("r: reverse impulse");
+  Serial.println("+: speed up");
+  Serial.println("-: speed down");
+  Serial.println("]: accel up");
+  Serial.println("[: accel down");
+  Serial.println("i: impulse");
+}
+    if (c == 'i') {
+      impulseActive = true;
+      impulseStart = millis();
+      stepper.setMaxSpeed(impulseSpeed);
+      stepper.setAcceleration(impulseAccel);
+      Serial.println("IMPULSE");
+    }
+
+    if (c == ']') {
+      baseAccel += 500;
+      stepper.setAcceleration(baseAccel);
+      Serial.println(baseAccel);
+    }
+
+    if (c == '[') {
+      baseAccel -= 500;
+      if (baseAccel < 100) baseAccel = 100;
+      stepper.setAcceleration(baseAccel);
+      Serial.println(baseAccel);
+    }
+
+    if (c == 'k') {
+      enabled = false;
+      running = false;
+      digitalWrite(EN_PIN, HIGH);
+      Serial.println("KILL");
+    }
+
+    if (c == 'r') {
+      impulseActive = true;
+      impulseStart = millis();
+      stepper.setAcceleration(20000);
+      direction *= -1;
+      stepper.moveTo(direction * targetPos);
+      Serial.println("REV");
+    }
+  }
+
+  if (impulseActive && millis() - impulseStart > impulseDuration) {
+    impulseActive = false;
+    stepper.setMaxSpeed(baseSpeed);
+    stepper.setAcceleration(baseAccel);
+    Serial.println("NORMAL");
+  }
+}
