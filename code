@@ -5,15 +5,14 @@ const int DIR_PIN  = 13;
 const int EN_PIN   = 11;
 
 AccelStepper stepper(AccelStepper::DRIVER, STEP_PIN, DIR_PIN);
-
-float baseSpeed = 1000;
+float baseSpeed = 500;
 float baseAccel = 1000;
 
 float impulseSpeed = 4000;
 float impulseAccel = 8000;
-
+//start travelling cw
 long targetPos = 1000000000L;
-
+// start slowly, motor will start, then stop & restart quickly
 bool running = true;
 bool enabled = true;
 int direction = 1;
@@ -21,7 +20,7 @@ int direction = 1;
 bool impulseActive = false;
 unsigned long impulseStart = 0;
 unsigned long impulseDuration = 200;
-
+//serial setup, please set baud to 115200
 void setup() {
   Serial.begin(115200);
   pinMode(EN_PIN, OUTPUT);
@@ -36,7 +35,7 @@ void loop() {
   if (running && enabled) {
     stepper.run();
   }
-
+// serial block begin (hard stop, kill, direction, impulse, reverse) 
   if (Serial.available()) {
     char c = Serial.read();
     if (c == '\n' || c == '\r') return;
