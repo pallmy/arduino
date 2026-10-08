@@ -1,5 +1,20 @@
 #include <AccelStepper.h>
 
+// Stepper controller for the von Mises experiment.
+// Serial @ 115200. Commands: ? for the list.
+//
+// SAFETY (why this boots the way it does):
+//   - Boots IDLE and DISABLED. The motor will NOT move on power-up, on a
+//     board reset, or when the laptop sleeps/wakes (which resets the board
+//     over USB). You must press 't' to run.
+//   - Stray/buffered serial bytes right after boot are flushed and ignored
+//     for a short window, so a sleep/wake reconnect can't inject a command.
+//   Hardware safety (do these too -- firmware alone is not enough):
+//   - Put a physical switch on the motor's DC power to the driver. Off = it
+//     cannot spin no matter what. Make that your default resting state.
+//   - 10uF cap RESET->GND on the Arduino kills USB auto-reset (remove to upload).
+//   - 10k pull-downs on STEP and DIR so they don't float during a reset.
+
 const int STEP_PIN = 12;
 const int DIR_PIN  = 13;
 const int EN_PIN   = 11;
@@ -10,24 +25,33 @@ float baseAccel = 1000;
 
 float impulseSpeed = 4000;
 float impulseAccel = 8000;
-//start travelling cw
 long targetPos = 1000000000L;
-// start slowly, motor will start, then stop & restart quickly
-bool running = true;
-bool enabled = true;
+
+// boot IDLE + DISABLED -- nothing moves until you arm it with 't'
+bool running = false;
+bool enabled = false;
 int direction = 1;
 
 bool impulseActive = false;
 unsigned long impulseStart = 0;
 unsigned long impulseDuration = 200;
-//serial setup, please set baud to 115200
+
+// ignore any serial that arrives in the first bit after boot (sleep/wake
+// reconnects can dump stray bytes that would otherwise run as commands)
+const unsigned long BOOT_QUIET_MS = 800;
+unsigned long bootQuietUntil = 0;
+
 void setup() {
   Serial.begin(115200);
   pinMode(EN_PIN, OUTPUT);
-  digitalWrite(EN_PIN, LOW);
+  digitalWrite(EN_PIN, HIGH);          // driver DISABLED (de-energized) on boot
   stepper.setMaxSpeed(baseSpeed);
   stepper.setAcceleration(baseAccel);
-  stepper.moveTo(targetPos);
+  // NOTE: no moveTo() here on purpose -- arming the target in setup is what
+  // made it take off on boot. The target is set when you press 't'.
+  bootQuietUntil = millis() + BOOT_QUIET_MS;
+  while (Serial.available()) Serial.read();   // flush junk from the reconnect
+  Serial.println("READY - press t to start (boots idle + disabled)");
 }
 
 void loop() {
@@ -35,7 +59,14 @@ void loop() {
   if (running && enabled) {
     stepper.run();
   }
-// serial block begin (hard stop, kill, direction, impulse, reverse) 
+
+  // during the boot-quiet window, drain and ignore any serial
+  if (millis() < bootQuietUntil) {
+    while (Serial.available()) Serial.read();
+    return;
+  }
+
+// serial block begin (hard stop, kill, direction, impulse, reverse)
   if (Serial.available()) {
     char c = Serial.read();
     if (c == '\n' || c == '\r') return;
@@ -43,6 +74,7 @@ void loop() {
     if (c == 't') {
       running = !running;
       if (running) {
+        enabled = true;                // arm enable together with run
         digitalWrite(EN_PIN, LOW);
         stepper.moveTo(direction * targetPos);
         Serial.println("RUN");
